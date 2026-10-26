@@ -8,6 +8,8 @@
 
   <ItemGroup>
     <PackageReference Include="MailKit" Version="4.8.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.2" />
     <PackageReference Include="RabbitMQ.Client" Version="7.0.0" />
   </ItemGroup>
 
