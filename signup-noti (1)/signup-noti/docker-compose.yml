@@ -1,0 +1,84 @@
+services:
+  kafka:
+    image: apache/kafka:3.8.0
+    ports:
+      - "29092:29092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"   # UI: http://localhost:15672 (guest/guest)
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mailhog:
+    image: mailhog/mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"     # UI: http://localhost:8025
+
+  user-service:
+    build:
+      context: ./backend
+      dockerfile: UserService/Dockerfile
+    ports:
+      - "3000:8080"     # API: http://localhost:3000
+    environment:
+      Kafka__BootstrapServers: kafka:9092
+    depends_on:
+      - kafka
+    restart: on-failure
+
+  notification-service:
+    build:
+      context: ./backend
+      dockerfile: NotificationService/Dockerfile
+    environment:
+      Kafka__BootstrapServers: kafka:9092
+      RabbitMq__Url: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    restart: on-failure
+
+  email-sender-service:
+    build:
+      context: ./backend
+      dockerfile: EmailSenderService/Dockerfile
+    environment:
+      RabbitMq__Url: amqp://guest:guest@rabbitmq:5672
+      Smtp__Host: mailhog
+      Smtp__Port: 1025
+      Smtp__From: no-reply@example.com
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mailhog:
+        condition: service_started
+    restart: on-failure
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "8080:80"       # Web: http://localhost:8080
+    depends_on:
+      - user-service
