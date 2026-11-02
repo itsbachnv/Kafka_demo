@@ -23,16 +23,39 @@ public sealed class KafkaEventPublisher : IEventPublisher, IDisposable
         _producer = new ProducerBuilder<string, string>(new ProducerConfig
         {
             BootstrapServers = o.BootstrapServers,
+            SecurityProtocol = SecurityProtocol.Plaintext,
             Acks = Acks.All,
             EnableIdempotence = true,
             MessageTimeoutMs = 10_000,
         }).Build();
     }
 
-    public async Task PublishAsync(string key, UserRegisteredEvent @event, CancellationToken ct = default)
+    public async Task PublishAsync(
+    string key,
+    UserRegisteredEvent @event,
+    CancellationToken ct = default)
     {
         var json = JsonSerializer.Serialize(@event, JsonOptions);
-        await _producer.ProduceAsync(_topic, new Message<string, string> { Key = key, Value = json }, ct);
+
+        try
+        {
+            var result = await _producer.ProduceAsync(
+                _topic,
+                new Message<string, string>
+                {
+                    Key = key,
+                    Value = json
+                },
+                ct);
+
+            Console.WriteLine(
+                $"Kafka published: {result.TopicPartitionOffset}");
+        }
+        catch (ProduceException<string, string> ex)
+        {
+            Console.WriteLine($"Kafka publish failed: {ex.Error.Reason}");
+            throw;
+        }
     }
 
     public void Dispose()
